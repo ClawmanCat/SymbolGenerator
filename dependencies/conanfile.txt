@@ -1,0 +1,17 @@
+[generators]
+cmake
+
+
+[requires]
+abseil/20200923.3
+range-v3/0.11.0
+COFFI/0.0.1@clawmancat/stable
+
+
+[imports]
+bin, *.dll -> ./bin
+lib, *.dll -> ./bin
+bin, *.dylib -> ./bin
+lib, *.dylib -> ./bin
+bin, *.so -> ./bin
+lib, *.so -> ./bin
