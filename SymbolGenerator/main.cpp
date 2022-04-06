@@ -31,6 +31,19 @@ int main(int argc, char** argv) {
     if (arg_parser.has_argument("verbose")) logger.set_level(symgen::logger::VERBOSE);
 
 
+    std::string filter_args;
+    for (const auto& filter_arg : { "y", "n", "yo", "no" }) {
+        if (auto arg = arg_parser.get_argument<std::string>(filter_arg); arg) {
+            filter_args += filter_arg;
+            filter_args += " = ";
+            filter_args += *arg;
+            filter_args += " ";
+        }
+    }
+
+    logger.normal("Symbols will be filtered according to the following settings: ", filter_args);
+
+
     // Set up output stream.
     std::ofstream stream { *arg_parser.template get_argument<std::string>("o") };
     stream << "LIBRARY " << *arg_parser.template get_argument<std::string>("lib") << "\n";
@@ -83,7 +96,7 @@ int main(int argc, char** argv) {
     logger.verbose("Processing took ", std::chrono::duration_cast<std::chrono::milliseconds>(stop - start));
 
     logger.normal(
-        "Generated ", *arg_parser.template get_argument<std::string>("lib"),
+        "Generated ", *arg_parser.template get_argument<std::string>("o"),
         " with ", next_index, " symbols."
     );
 }

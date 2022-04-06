@@ -26,6 +26,20 @@ namespace symgen {
     }
 
 
+    template <typename Rng> inline std::string join(const Rng& range, std::string_view sep) {
+        std::string result;
+        if (std::size(range) == 0) return result;
+
+        for (const auto& elem : range | views::drop_last(1)) {
+            result += elem;
+            result += sep;
+        }
+        
+        result += *(range.begin() + std::size(range) - 1);
+        return result;
+    }
+
+
     inline std::vector<fs::path> find_all_of_type(const fs::path& dir, std::string_view extension) {
         std::vector<fs::path> result;
 

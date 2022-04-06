@@ -4,6 +4,7 @@
 #include <SymbolGenerator/logger.hpp>
 
 #include <coffi/coffi.hpp>
+#include <coffi/coffi_types.hpp>
 
 #include <fstream>
 #include <sstream>
@@ -40,7 +41,9 @@ namespace symgen {
 
 
         for (const auto& sym : *reader.get_symbols()) {
+            if (sym.get_type() == IMAGE_SYM_TYPE_NULL) continue;
             std::string mangled_name = sym.get_name();
+
 
             if (auto it = cached_symbols.find(mangled_name); it != cached_symbols.end()) {
                 if (it->second) included_symbols.push_back(std::move(mangled_name));
@@ -112,7 +115,10 @@ namespace symgen {
 
 
     void translation_unit_processor::load_cache(const fs::path& path) {
-        if (!fs::exists(path)) return;
+        if (!fs::exists(path)) {
+            log.verbose("No cache found.");
+            return;
+        }
 
         enum { UNKNOWN, READ_SETTINGS, READ_SYMBOLS } state = UNKNOWN;
         std::ifstream stream { path };
@@ -137,31 +143,42 @@ namespace symgen {
                 auto pos = sv.find('=');
                 log.assert_that(pos != std::string_view::npos, "Incorrectly formatted cache file: ", path);
 
-                auto k   = sv.substr(0, pos);
-                auto v   = sv.substr(pos, std::string_view::npos);
+                auto k = sv.substr(0, pos);
+                auto v = sv.substr(pos + 1, std::string_view::npos);
 
                 // Make sure setting from cache is also set currently.
                 auto current_setting = argument_parser::instance().template get_argument<std::string>(k);
-                if (!current_setting) return; // Settings mismatch, can't use cache.
-
-                // Make sure setting has the same value. Value is space-separated list of strings, but can be re-ordered.
-                auto current_elems = split(*current_setting, " ");
-                std::size_t matched_elems = 0;
-
-                for (const auto& setting : split(v, " ")) {
-                    if (auto it = std::ranges::find(current_elems, setting); it == current_elems.end()) return; // Settings mismatch, can't use cache.
-                    ++matched_elems;
+                if (!current_setting) {
+                    log.verbose("Cache is out of date and cannot be used. (Setting ", k, " is set in cache but not present currently.)");
+                    return;
                 }
 
-                if (matched_elems != current_elems.size()) return; // Settings mismatch, can't use cache.
+                // Make sure setting has the same value. Value is space-separated list of strings, so account for re-orderings.
+                auto current_arg_components = split(*current_setting, " ");
+                ranges::sort(current_arg_components);
+                auto cache_arg_components = split(v, " ");
+                ranges::sort(cache_arg_components);
+
+                std::vector<std::string_view> difference;
+                std::set_difference(
+                    current_arg_components.begin(), current_arg_components.end(),
+                    cache_arg_components.begin(), cache_arg_components.end(),
+                    std::back_inserter(difference)
+                );
+
+                if (!difference.empty()) {
+                    std::string diff_string = join(difference, ",");
+                    log.verbose("Cache is out of date and cannot be used. (The following values are mismatched for ", k, ": ", diff_string, ")");
+                    return;
+                }
             }
 
             if (state == READ_SYMBOLS) {
                 auto pos = sv.find('=');
                 log.assert_that(pos != std::string_view::npos, "Incorrectly formatted cache file: ", path);
 
-                auto k   = sv.substr(0, pos);
-                auto v   = sv.substr(pos, std::string_view::npos);
+                auto k = sv.substr(0, pos);
+                auto v = sv.substr(pos + 1, std::string_view::npos);
 
                 cached_symbols.emplace(k, (v == "T"));
             }

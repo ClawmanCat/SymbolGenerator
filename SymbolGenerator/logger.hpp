@@ -52,7 +52,7 @@ namespace symgen {
 
         void set_level(logger_level level) { this->level = level; }
     private:
-        std::string prefix = "";
+        std::string prefix = "SymbolGenerator";
         logger_level level = NORMAL;
     };
 }
