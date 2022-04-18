@@ -7,7 +7,7 @@ like hitting the 64K symbol limit from unnecessarily exported symbols.
 
 ### Building
 - This is a Windows-only library. Linux platforms do not have the same issues, since symbols are exported by default
-and there is no 64K symbol limit. This library will not build on non-Windows platforms.
+and there is no 64K symbol limit. This library will not build on non-Windows platforms and assumes symbols are mangled according to the MSVC ABI.
 - [Conan](https://conan.io/) (and therefore [Python](https://www.python.org/downloads/)) is required to install the project's dependencies (`pip install conan`).
 - [CMake](https://cmake.org/download/) is required, together with some generator to build the project with (e.g. [Ninja](https://ninja-build.org/)).
 
@@ -21,10 +21,11 @@ cmake --build ./[debug|release] --target all
 
 ### Usage
 The program takes as its input a set of `.obj` files and some regex filters, and produces a `.def` file containing all symbols that are matched by said filters.  
-The command line arguments are as follows:
+The command line arguments are as follows (the program does not differentiate between `-arg` and `--arg`):
 - `-lib`:     the name of the DLL that will be created using the generated `.def` file.
 - `-i`:       the directory containing the `.obj` to process. The provided path is searched recursively.
 - `-o`:       the path of the output `.def` file.
+- `-fn`:      the path to a DLL. If provided, the program will attempt to invoke a filter function in the DLL when processing symbols (see below).
 - `-y`:       a list of regexes for namespaces to include. Includes all symbols in the given namespace and all subnamespaces.
 Namespace should be a top-level namespace, or its parent should already be included by another `-y` parameter.
 - `-n`:       a list of regexes for namespaces to exclude. Excludes all symbols in the given namespace and all subnamespaces.
@@ -39,6 +40,15 @@ Caching occurs on a per-obj-file basis.
 
 The `-lib`, `-i` and `-o` parameters are required. All other parameters are optional (Although you should provide at least one to match anything).  
 Note that "namespace" for the purpose of this parser refers to any scope object. E.g. for nested classes, the parent class will show as part of the namespace.
+
+When the `-fn` option is used, the program will attempt to load the function with the following signature from the provided DLL:
+```c++
+extern "C" __declspec(dllexport) int keep_symbol(const char* sym, const void* symbol, const void* reader);
+```
+Provided are the demangled name of the symbol (as per `UnDecorateSymbolName`), and pointers to the associated `COFFI::symbol` and `COFFI::reader`.  
+The function should return zero to discard the symbol, and non-zero otherwise.  
+If the `-fn` option is combined with other filters, this function is only invoked with symbols that have already passed all other filters.
+
 
 Example:
 ```shell

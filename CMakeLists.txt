@@ -45,3 +45,4 @@ endif()
 
 # Add subprojects.
 add_subdirectory(SymbolGenerator)
+add_subdirectory(ExampleFilter)

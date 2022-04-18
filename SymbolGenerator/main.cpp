@@ -41,7 +41,16 @@ int wrapped_main(int argc, char** argv) {
     arg_parser.template require_argument<std::string>("i");
     arg_parser.template require_argument<std::string>("o");
 
+
     if (arg_parser.has_argument("verbose")) logger.set_level(symgen::logger::VERBOSE);
+
+    if (arg_parser.has_argument("fn") && arg_parser.has_argument("cache")) {
+        logger.warning(
+            "Using --cache together with --fn: ",
+            "this may produce unexpected results if the result of the DLL is not constant between invocations of SymbolGenerator.exe. ",
+            "You should make sure to manually clear cache files (.objcache) if the DLL filter implementation changes."
+        );
+    }
 
 
     std::string filter_args;
