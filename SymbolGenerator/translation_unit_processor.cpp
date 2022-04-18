@@ -36,6 +36,10 @@ namespace symgen {
         const auto& args_yo = rule_cache::instance().get_force_includes();
         const auto& args_no = rule_cache::instance().get_force_excludes();
 
+        filter_function filter_fn = argument_parser::instance().has_argument("fn")
+            ? load_filter_function(*argument_parser::instance().get_argument<std::string>("fn"))
+            : [] (const char*, const void*, const void*) { return 1; };
+
 
         for (const auto& sym : *reader.get_symbols()) {
             if (sym.get_type() == IMAGE_SYM_TYPE_NULL) continue;
@@ -95,6 +99,12 @@ namespace symgen {
             }
 
 
+            // If the symbol is included, check if it isn't excluded by the filter function.
+            if (state == INCLUDED || state == FORCE_INCLUDED) {
+                if (filter_fn(sym.get_name().c_str(), &sym, &reader) == 0) state = FORCE_EXCLUDED;
+            }
+
+
             if (state == INCLUDED || state == FORCE_INCLUDED) {
                 included_symbols.emplace_back(mangled_name);
                 cached_symbols.emplace(std::move(mangled_name), true);
@@ -121,6 +131,8 @@ namespace symgen {
         log.assert_that(!stream.fail(), "Failed to read cache file ", path);
 
         std::string line;
+        hash_map<std::string, std::string> cached_args;
+
         while (std::getline(stream, line)) {
             std::string_view sv { line };
             if (sv.empty()) continue;
@@ -141,32 +153,7 @@ namespace symgen {
 
                 auto k = sv.substr(0, pos);
                 auto v = sv.substr(pos + 1, std::string_view::npos);
-
-                // Make sure setting from cache is also set currently.
-                auto current_setting = argument_parser::instance().template get_argument<std::string>(k);
-                if (!current_setting) {
-                    log.verbose("Cache is out of date and cannot be used. (Setting ", k, " is set in cache but not present currently.)");
-                    return;
-                }
-
-                // Make sure setting has the same value. Value is space-separated list of strings, so account for re-orderings.
-                auto current_arg_components = split(*current_setting, " ");
-                ranges::sort(current_arg_components);
-                auto cache_arg_components = split(v, " ");
-                ranges::sort(cache_arg_components);
-
-                std::vector<std::string_view> difference;
-                std::set_difference(
-                    current_arg_components.begin(), current_arg_components.end(),
-                    cache_arg_components.begin(), cache_arg_components.end(),
-                    std::back_inserter(difference)
-                );
-
-                if (!difference.empty()) {
-                    std::string diff_string = join(difference, ",");
-                    log.verbose("Cache is out of date and cannot be used. (The following values are mismatched for ", k, ": ", diff_string, ")");
-                    return;
-                }
+                cached_args.emplace(k, v);
             }
 
             if (state == READ_SYMBOLS) {
@@ -180,7 +167,22 @@ namespace symgen {
             }
         }
 
-        log.verbose("Loaded ", cached_symbols.size(), " symbols from cache.");
+
+        // Make sure arguments match between cache and current program invocation.
+        hash_map<std::string, std::string> current_args;
+        for (const auto& setting : std::array { "y", "n", "yo", "no", "fn" }) {
+            if (auto arg = argument_parser::instance().get_argument<std::string>(setting); arg) {
+                current_args.emplace(setting, *arg);
+            }
+        }
+
+        auto error_msg = check_settings_compatible(cached_args, current_args);
+        if (error_msg) {
+            log.verbose("Cache is out of date and cannot be used. (", *error_msg, ")");
+            cached_symbols.clear();
+        } else {
+            log.verbose("Loaded ", cached_symbols.size(), " symbols from cache.");
+        }
     }
 
 
@@ -188,7 +190,7 @@ namespace symgen {
         std::ofstream stream { path };
 
         stream << "#SETTINGS\n";
-        for (const auto& setting : std::array { "y", "n", "yo", "no" }) {
+        for (const auto& setting : std::array { "y", "n", "yo", "no", "fn" }) {
             if (auto arg = argument_parser::instance().template get_argument<std::string>(setting); arg) {
                 stream << setting << "=" << *arg << "\n";
             }

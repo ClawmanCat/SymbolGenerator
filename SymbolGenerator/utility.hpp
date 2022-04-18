@@ -9,7 +9,17 @@
 
 
 namespace symgen {
+    using filter_function = int(*)(const char*, const void*, const void*);
+
+    extern filter_function load_filter_function(const fs::path& path);
     extern std::string demangle_symbol(const std::string& symbol);
+
+
+    template <typename... Ts> inline std::string stream_to_string(const Ts&... args) {
+        std::stringstream stream;
+        (stream << ... << args);
+        return stream.str();
+    }
 
 
     inline std::vector<std::string_view> split(std::string_view sv, std::string_view sep) {
@@ -53,5 +63,53 @@ namespace symgen {
 
     template <typename T> inline auto construct(void) {
         return [] (auto&& arg) -> T { return T { std::forward<decltype(arg)>(arg) }; };
+    }
+
+
+    // Checks if the two given settings dicts are compatible. Returns an error message if they're not, and nullopt otherwise.
+    inline std::optional<std::string> check_settings_compatible(const hash_map<std::string, std::string>& cached, const hash_map<std::string, std::string>& current) {
+        for (const auto& [setting, value] : cached) {
+            if (!current.contains(setting)) {
+                return stream_to_string("setting ", setting, " is set in cache but not present currently.");
+            }
+        }
+
+        for (const auto& [setting, value] : current) {
+            if (!cached.contains(setting)) {
+                return stream_to_string("setting ", setting, " is set currently but not present in cache.");
+            }
+        }
+
+
+        // Setting values are space-separated lists, so we have to account for the fact they may be re-ordered.
+        for (const auto& [setting, cached_value] : cached) {
+            const auto& current_value = current.at(setting);
+
+            auto cached_value_components  = split(cached_value, " ");
+            ranges::sort(cached_value_components);
+            auto current_value_components = split(current_value, " ");
+            ranges::sort(current_value_components);
+
+            std::vector<std::string_view> difference;
+            ranges::set_symmetric_difference(cached_value_components, current_value_components, std::back_inserter(difference));
+
+            if (!difference.empty()) {
+                std::string error_msg = stream_to_string(
+                    "setting ", setting,
+                    " has a different value in cache (", cached_value,
+                    ") than its current value (", current_value, ")."
+                );
+
+                if (difference.size() > 2) {
+                    std::string diff_string = join(difference, ", ");
+                    error_msg += stream_to_string(" The following values are mismatched: ", diff_string, ".");
+                }
+
+                return error_msg;
+            }
+        }
+
+
+        return std::nullopt;
     }
 }
