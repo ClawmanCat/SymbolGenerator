@@ -26,9 +26,6 @@ namespace symgen {
 
 
     void translation_unit_processor::parse(const fs::path& obj_path) {
-        //std::ifstream stream { obj_path };
-        //log.assert_that(!stream.fail(), "Failed to read obj file ", obj_path);
-
         COFFI::coffi reader;
         reader.load(obj_path.string());
         log.verbose(reader.get_symbols()->size(), " symbols found.");
@@ -53,21 +50,20 @@ namespace symgen {
 
             std::string demangled_name  = demangle_symbol(mangled_name);
             auto        name_components = split(demangled_name, "::");
-            auto        symbol_name     = name_components.back();
 
             enum { NOT_INCLUDED, INCLUDED, EXCLUDED, FORCE_INCLUDED, FORCE_EXCLUDED } state = NOT_INCLUDED;
 
 
             // Check if the symbol is force included or force excluded.
             for (const auto& rgx : args_yo) {
-                if (std::regex_match(symbol_name.begin(), symbol_name.end(), rgx)) {
+                if (std::regex_match(demangled_name.begin(), demangled_name.end(), rgx)) {
                     state = FORCE_INCLUDED;
                     break;
                 }
             }
 
             for (const auto& rgx : args_no) {
-                if (std::regex_match(symbol_name.begin(), symbol_name.end(), rgx)) {
+                if (std::regex_match(demangled_name.begin(), demangled_name.end(), rgx)) {
                     state = FORCE_EXCLUDED;
                     break;
                 }
