@@ -5,7 +5,7 @@ cmake
 [requires]
 abseil/20200923.3
 range-v3/0.11.0
-COFFI/0.0.1@clawmancat/stable
+COFFI/0.0.2@clawmancat/stable
 
 
 [imports]

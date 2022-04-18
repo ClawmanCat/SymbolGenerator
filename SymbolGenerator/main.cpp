@@ -12,7 +12,20 @@
 using std::chrono::steady_clock;
 
 
+// Wrapper to ensure uncaught exceptions are logged.
+int wrapped_main(int argc, char** argv);
+
 int main(int argc, char** argv) {
+    try {
+        return wrapped_main(argc, argv);
+    } catch (std::exception& e) {
+        symgen::logger::instance().error("Uncaught exception: ", e.what());
+        return -1;
+    }
+}
+
+
+int wrapped_main(int argc, char** argv) {
     steady_clock::time_point start = steady_clock::now();
 
 
@@ -44,15 +57,9 @@ int main(int argc, char** argv) {
     logger.normal("Symbols will be filtered according to the following settings: ", filter_args);
 
 
-    // Set up output stream.
-    std::ofstream stream { *arg_parser.template get_argument<std::string>("o") };
-    stream << "LIBRARY " << *arg_parser.template get_argument<std::string>("lib") << "\n";
-    stream << "EXPORTS\n";
-
-    std::size_t next_index = 0;
-
-
     // Parse object files for symbols.
+    symgen::hash_set<std::string> symbols;
+
     std::size_t max_concurrency = arg_parser.template get_argument<long long>("j").value_or(std::thread::hardware_concurrency());
     auto object_paths = symgen::find_all_of_type(*arg_parser.template get_argument<std::string>("i"), ".obj");
 
@@ -82,21 +89,45 @@ int main(int argc, char** argv) {
 
         for (auto& thread : threads) thread.join();
 
-        for (const auto& unit : processors) {
-            for (const auto& symbol : unit.get_included_symbols()) {
-                stream << symbol << " @" << next_index++ << "\n";
-            }
+        for (auto& unit : processors) {
+            symbols.insert(
+                std::make_move_iterator(unit.get_included_symbols().begin()),
+                std::make_move_iterator(unit.get_included_symbols().end())
+            );
         }
-
-        stream << std::flush;
     }
 
 
+    // Write symbols to def file.
+    const bool output_ordinals = arg_parser.has_argument("ordinal");
+
+    std::ofstream stream { *arg_parser.template get_argument<std::string>("o") };
+    stream << "LIBRARY " << *arg_parser.template get_argument<std::string>("lib") << "\n";
+    stream << "EXPORTS\n";
+
+    std::size_t next_index = 1; // Zero is not a valid symbol index.
+
+
+    for (const auto& symbol : symbols) {
+        logger.assert_that(next_index < UINT16_MAX, "Symbol limit exceeded. Try providing additional filters.");
+
+        stream << "  " << symbol;
+        if (output_ordinals) stream << " @" << next_index << " NONAME";
+        stream << "\n";
+
+        ++next_index;
+    }
+
+
+    // Log result.
     steady_clock::time_point stop = steady_clock::now();
     logger.verbose("Processing took ", std::chrono::duration_cast<std::chrono::milliseconds>(stop - start));
 
     logger.normal(
         "Generated ", *arg_parser.template get_argument<std::string>("o"),
-        " with ", next_index, " symbols."
+        " with ", (next_index - 1), " symbols."
     );
+
+
+    return 0;
 }
