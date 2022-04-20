@@ -112,4 +112,47 @@ namespace symgen {
 
         return std::nullopt;
     }
+
+
+    inline std::vector<std::string_view> split_symbol_namespaces(std::string_view symbol) {
+        std::vector<std::string_view> result;
+        std::string_view::iterator current_token_start = symbol.begin();
+
+        // Some symbols have names of the format X::Y::`description' or X::Y::`description 'X::Y::symbol''.
+        // These two different formats prevent us from just keeping track of nesting depth directly.
+        // Fortunately, various C++ limitations seem to make it impossible to have further nesting of quotes,
+        // e.g., X::Y::`description 'X::Y::symbol'' where "symbol" itself contains quotes seem to be impossible,
+        // so we just have to keep track of these special cases.
+        std::size_t quote_depth     = 0;
+        std::size_t template_depth  = 0;
+
+        for (auto it = symbol.begin(); it != symbol.end(); ++it) {
+            std::string_view sv { it, symbol.end() };
+
+            if      (sv.starts_with('<') && quote_depth == 0) ++template_depth;
+            else if (sv.starts_with('>') && quote_depth == 0) --template_depth;
+            else if (sv.starts_with('`') && template_depth == 0 && quote_depth == 0) ++quote_depth;
+
+            else if (sv.starts_with('\'') && template_depth == 0 && quote_depth > 0) {
+                // This could be either a begin quote or an end quote. If it is a begin quote it will be followed by a symbol,
+                // if this is an end quote it will be followed by a namespace separator, another end quote or the end of the string.
+                auto rest = sv.substr(1);
+
+                if (rest.starts_with("::") || rest.starts_with('\'') || rest.empty()) --quote_depth;
+                else ++quote_depth;
+            }
+
+            else if (sv.starts_with("::") && template_depth == 0 && quote_depth == 0) {
+                result.emplace_back(current_token_start, it);
+                current_token_start = it + 2; // +2 to skip leading ::
+            }
+        }
+
+
+        if (current_token_start != symbol.end()) {
+            result.emplace_back(current_token_start, symbol.end());
+        }
+
+        return result;
+    }
 }

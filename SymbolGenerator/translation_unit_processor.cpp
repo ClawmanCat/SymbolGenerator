@@ -53,7 +53,7 @@ namespace symgen {
 
 
             std::string demangled_name  = demangle_symbol(mangled_name);
-            auto        name_components = split(demangled_name, "::");
+            auto        name_components = split_symbol_namespaces(demangled_name);
 
             enum { NOT_INCLUDED, INCLUDED, EXCLUDED, FORCE_INCLUDED, FORCE_EXCLUDED } state = NOT_INCLUDED;
 
