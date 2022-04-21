@@ -99,4 +99,4 @@ As with CMake's `WINDOWS_EXPORT_ALL_SYMBOLS` option, global data symbols must st
 The easiest solution right now is to just export a getter method instead, but an option to automatically edit the existing `.obj` files to mark exported data symbols as such is being looked into.  
   
 Since objects in the global namespace have no namespace to match against the provided filters, they are always excluded by default, even if an option like `-y .*` is used. Such symbols must be included manually with `-yo`, or moved into a namespace.  
-Note that the global namespace also contains special symbols like the `.text`, `.data` and `.debug` sections which should never be exported directly, so exporting the entire global namespace is not an option.
+Note that the global namespace also contains special symbols like `.text`, `.data` and `.debug` which should never be exported directly, so exporting the entire global namespace is not an option.
