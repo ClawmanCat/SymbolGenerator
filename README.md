@@ -46,7 +46,7 @@ When the `-fn` option is used, the program will attempt to load the function wit
 ```c++
 extern "C" __declspec(dllexport) int keep_symbol(const char* sym, const void* symbol, const void* reader);
 ```
-Provided are the demangled name of the symbol (as per `UnDecorateSymbolName`), and pointers to the associated `COFFI::symbol` and `COFFI::reader`.  
+Provided are the demangled name of the symbol (as per `UnDecorateSymbolName`), and pointers to the associated `COFFI::symbol` and `COFFI::coffi`.  
 The function should return zero to discard the symbol, and non-zero otherwise.  
 If the `-fn` option is combined with other filters, this function is only invoked with symbols that have already passed all other filters.
 
