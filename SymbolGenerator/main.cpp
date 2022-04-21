@@ -43,6 +43,7 @@ int wrapped_main(int argc, char** argv) {
 
 
     if (arg_parser.has_argument("verbose")) logger.set_level(symgen::logger::VERBOSE);
+    if (arg_parser.has_argument("trace"))   logger.set_level(symgen::logger::TRACE);
 
     if (arg_parser.has_argument("fn") && arg_parser.has_argument("cache")) {
         logger.warning(

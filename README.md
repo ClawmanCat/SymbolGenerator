@@ -22,21 +22,22 @@ cmake --build ./[debug|release] --target all
 ### Usage
 The program takes as its input a set of `.obj` files and some regex filters, and produces a `.def` file containing all symbols that are matched by said filters.  
 The command line arguments are as follows (the program does not differentiate between `-arg` and `--arg`):
-- `-lib`:     the name of the DLL that will be created using the generated `.def` file.
-- `-i`:       the directory containing the `.obj` to process. The provided path is searched recursively.
-- `-o`:       the path of the output `.def` file.
-- `-fn`:      the path to a DLL. If provided, the program will attempt to invoke a filter function in the DLL when processing symbols (see below).
-- `-y`:       a list of regexes for namespaces to include. Includes all symbols in the given namespace and all subnamespaces.
+- `-lib`:       the name of the DLL that will be created using the generated `.def` file.
+- `-i`:         the directory containing the `.obj` to process. The provided path is searched recursively.
+- `-o`:         the path of the output `.def` file.
+- `-fn`:        the path to a DLL. If provided, the program will attempt to invoke a filter function in the DLL when processing symbols (see below).
+- `-y`:         a list of regexes for namespaces to include. Includes all symbols in the given namespace and all subnamespaces.
 Namespace should be a top-level namespace, or its parent should already be included by another `-y` parameter.
-- `-n`:       a list of regexes for namespaces to exclude. Excludes all symbols in the given namespace and all subnamespaces.
+- `-n`:         a list of regexes for namespaces to exclude. Excludes all symbols in the given namespace and all subnamespaces.
 Namespace need not be a top-level namespace.
-- `-yo`:      a list of regexes of force-included symbols. These symbols are always included, even if they are in an excluded namespace.
-- `-no`:      a list of regexes of force-excluded symbols. These symbols are always excluded, even if they are in an included namespace.
-- `-cache`:   if provided, the results of the program will be cached so that it can run faster the next time it is invoked with the same arguments.
+- `-yo`:        a list of regexes of force-included symbols (matched against the full symbol name, including the namespace). These symbols are always included, even if they are in an excluded namespace.
+- `-no`:        a list of regexes of force-excluded symbols (matched against the full symbol name, including the namespace). These symbols are always excluded, even if they are in an included namespace.
+- `-cache`:     if provided, the results of the program will be cached so that it can run faster the next time it is invoked with the same arguments.
 Caching occurs on a per-obj-file basis.
-- `-verbose`: if provided, logs additional information, like the number of symbols per TU and whether or not cached symbols were used.
-- `-j`:       if provided, the number of threads used to process objects. Defaults to number of threads of the current device.
-- `-ordinal`: if provided, symbols are exported by ordinal instead of by name. Use this option to reduce the size of the DLL.
+- `-verbose`:   if provided, logs additional information, like the number of symbols per TU and whether or not cached symbols were used.
+- `-trace`:     if provided, logs even more information, like the reason for each symbol's inclusion or exclusion.
+- `-j`:         if provided, the number of threads used to process objects. Defaults to number of threads of the current device.
+- `-ordinal`:   if provided, symbols are exported by ordinal instead of by name. Use this option to reduce the size of the DLL.
 
 The `-lib`, `-i` and `-o` parameters are required. All other parameters are optional (Although you should provide at least one to match anything).  
 Note that "namespace" for the purpose of this parser refers to any scope object. E.g. for nested classes, the parent class will show as part of the namespace.
@@ -81,7 +82,7 @@ function(create_symbol_filter target argument_file)
         ARGS
             ${args}
             -i "${PROJECT_BINARY_DIR}/${target}/CMakeFiles/${target}.dir"
-            -o "${PROJECT_BINARY_DIR}/${target}.def"
+            -o "${CMAKE_CURRENT_BINARY_DIR}/${target}.def"
             --lib ${target}
             --cache
         VERBATIM
@@ -92,3 +93,10 @@ function(create_symbol_filter target argument_file)
     target_link_options(${target} PRIVATE "/DEF:${target}.def")
 endfunction()
 ```
+
+### Limitations
+As with CMake's `WINDOWS_EXPORT_ALL_SYMBOLS` option, global data symbols must still be marked with `__declspec(dllimport)` when importing.  
+The easiest solution right now is to just export a getter method instead, but an option to automatically edit the existing `.obj` files to mark exported data symbols as such is being looked into.  
+  
+Since objects in the global namespace have no namespace to match against the provided filters, they are always excluded by default, even if an option like `-y .*` is used. Such symbols must be included manually with `-yo`, or moved into a namespace.  
+Note that the global namespace also contains special symbols like the `.text`, `.data` and `.debug` sections which should never be exported directly, so exporting the entire global namespace is not an option.

@@ -8,7 +8,7 @@
 namespace symgen {
     class logger {
     public:
-        enum logger_level { VERBOSE, NORMAL, WARNING, ERROR };
+        enum logger_level { TRACE, VERBOSE, NORMAL, WARNING, ERROR };
 
 
         static logger& instance(void) {
@@ -44,6 +44,7 @@ namespace symgen {
             #endif
         }
 
+        void trace  (const auto&... msg) { message(logger_level::TRACE,   msg...); }
         void verbose(const auto&... msg) { message(logger_level::VERBOSE, msg...); }
         void normal (const auto&... msg) { message(logger_level::NORMAL,  msg...); }
         void warning(const auto&... msg) { message(logger_level::WARNING, msg...); }
