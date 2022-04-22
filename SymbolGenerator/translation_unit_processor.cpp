@@ -125,7 +125,7 @@ namespace symgen {
 
             // If the symbol is included, check if it isn't excluded by the filter function.
             if (state == INCLUDED || state == FORCE_INCLUDED) {
-                if (filter_fn(sym.get_name().c_str(), &sym, &reader) == 0) {
+                if (filter_fn(demangled_name.c_str(), &sym, &reader) == 0) {
                     state = FORCE_EXCLUDED;
                     log.trace("Symbol is now FORCE_EXCLUDED because of DLL filter.");
                 }
