@@ -32,7 +32,7 @@ namespace symgen {
 
 
         auto get_arg_strings = [] (const auto& arg) {
-            const auto arg_value   = argument_parser::instance().get_argument<std::string>("y").value_or("");
+            const auto arg_value   = argument_parser::instance().get_argument<std::string>(arg).value_or("");
             const auto split_value = split(arg_value, " ");
 
             return split_value | views::transform([] (auto sv) { return std::string { sv }; }) | ranges::to<std::vector>;
