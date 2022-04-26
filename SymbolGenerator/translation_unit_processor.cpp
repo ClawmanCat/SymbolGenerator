@@ -1,7 +1,8 @@
 #include <SymbolGenerator/translation_unit_processor.hpp>
 #include <SymbolGenerator/rule_cache.hpp>
-#include <SymbolGenerator/utility.hpp>
 #include <SymbolGenerator/logger.hpp>
+#include <SymbolGenerator/coff_utils.hpp>
+#include <SymbolGenerator/unexported_symbol_filters.hpp>
 
 #include <coffi/coffi.hpp>
 #include <coffi/coffi_types.hpp>
@@ -60,9 +61,11 @@ namespace symgen {
 
 
             if (auto it = cached_symbols.find(mangled_name); it != cached_symbols.end()) {
-                if (it->second) included_symbols.push_back(std::move(mangled_name));
-                log.trace("Symbol was cached and will ", (it->second ? "" : "NOT "), "be included");
+                if (it->second != symbol_state::EXCLUDED) {
+                    included_symbols.push_back({ std::move(mangled_name), it->second == symbol_state::DATA });
+                }
 
+                log.trace("Symbol was cached and will ", (it->second == symbol_state::EXCLUDED ? "NOT " : ""), "be included");
                 continue;
             }
 
@@ -74,13 +77,22 @@ namespace symgen {
             enum { NOT_INCLUDED, INCLUDED, EXCLUDED, FORCE_INCLUDED, FORCE_EXCLUDED } state = NOT_INCLUDED;
 
 
-            // Check if the symbol is force included or force excluded.
-            for (const auto& [i, rgx] : args_yo | views::enumerate) {
-                if (std::regex_match(demangled_name.begin(), demangled_name.end(), rgx)) {
-                    state = FORCE_INCLUDED;
-                    log.trace("Symbol is now FORCE_INCLUDED because of rule yo = ", args_yo_split[i]);
+            // Check if this is a symbol that cannot be exported.
+            if (auto filter_reason = filters::apply_all(sym, reader, demangled_name); filter_reason) {
+                state = FORCE_EXCLUDED;
+                log.trace("Symbol is now FORCE_EXCLUDED because it cannot be exported. (Excluded by filter ", *filter_reason, ")");
+            }
 
-                    break;
+
+            // Check if the symbol is force included or force excluded.
+            if (state != FORCE_EXCLUDED) {
+                for (const auto& [i, rgx] : args_yo | views::enumerate) {
+                    if (std::regex_match(demangled_name.begin(), demangled_name.end(), rgx)) {
+                        state = FORCE_INCLUDED;
+                        log.trace("Symbol is now FORCE_INCLUDED because of rule yo = ", args_yo_split[i]);
+
+                        break;
+                    }
                 }
             }
 
@@ -133,10 +145,12 @@ namespace symgen {
 
 
             if (state == INCLUDED || state == FORCE_INCLUDED) {
-                included_symbols.emplace_back(mangled_name);
-                cached_symbols.emplace(std::move(mangled_name), true);
+                bool is_data = is_data_symbol(sym);
+
+                included_symbols.push_back({ mangled_name, is_data });
+                cached_symbols.emplace(std::move(mangled_name), is_data ? symbol_state::DATA : symbol_state::FUNCTION);
             } else {
-                cached_symbols.emplace(std::move(mangled_name), false);
+                cached_symbols.emplace(std::move(mangled_name), symbol_state::EXCLUDED);
             }
 
             has_uncached_symbols = true;
@@ -153,12 +167,16 @@ namespace symgen {
             return;
         }
 
-        enum { UNKNOWN, READ_SETTINGS, READ_SYMBOLS } state = UNKNOWN;
+
+        enum { UNKNOWN, READ_SETTINGS, READ_SYMBOLS, READ_VERSION } state = UNKNOWN;
+
         std::ifstream stream { path };
         log.assert_that(!stream.fail(), "Failed to read cache file ", path);
 
         std::string line;
         hash_map<std::string, std::string> cached_args;
+        std::string version = "";
+
 
         while (std::getline(stream, line)) {
             std::string_view sv { line };
@@ -171,6 +189,11 @@ namespace symgen {
 
             if (sv.starts_with("#SYMBOLS")) {
                 state = READ_SYMBOLS;
+                continue;
+            }
+
+            if (sv.starts_with("#VERSION")) {
+                state = READ_VERSION;
                 continue;
             }
 
@@ -190,8 +213,33 @@ namespace symgen {
                 auto k = sv.substr(0, pos);
                 auto v = sv.substr(pos + 1, std::string_view::npos);
 
-                cached_symbols.emplace(k, (v == "T"));
+
+                for (auto s : { symbol_state::DATA, symbol_state::FUNCTION, symbol_state::EXCLUDED }) {
+                    if (v.starts_with((char) s)) {
+                        cached_symbols.emplace(k, s);
+                        break;
+                    }
+                }
             }
+
+            if (state == READ_VERSION) {
+                if (!sv.empty()) version = std::string { sv };
+            }
+        }
+
+
+        // Make sure the cache file is using the format version we expect.
+        if (version.empty()) version = "None";
+
+        if (version != CACHE_FMT_VERSION) {
+            log.warning(
+                "Cache file is using an outdated format and cannot be used ",
+                "(Expected ", CACHE_FMT_VERSION, ", got ", version, "). ",
+                "You should delete cache files manually."
+            );
+
+            cached_symbols.clear();
+            return;
         }
 
 
@@ -224,8 +272,8 @@ namespace symgen {
         }
 
         stream << "#SYMBOLS\n";
-        for (const auto& [symbol, enabled] : cached_symbols) {
-            stream << symbol << "=" << (enabled ? 'T' : 'F') << "\n";
+        for (const auto& [symbol, state] : cached_symbols) {
+            stream << symbol << "=" << (char) state << "\n";
         }
 
         log.assert_that((bool) stream, "Failed to write to cache file ", path);

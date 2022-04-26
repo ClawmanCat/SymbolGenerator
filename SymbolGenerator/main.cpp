@@ -68,7 +68,7 @@ int wrapped_main(int argc, char** argv) {
 
 
     // Parse object files for symbols.
-    symgen::hash_set<std::string> symbols;
+    symgen::hash_set<symgen::included_symbol> symbols;
 
     std::size_t max_concurrency = arg_parser.template get_argument<long long>("j").value_or(std::thread::hardware_concurrency());
     auto object_paths = symgen::find_all_of_type(*arg_parser.template get_argument<std::string>("i"), ".obj");
@@ -121,7 +121,8 @@ int wrapped_main(int argc, char** argv) {
     for (const auto& symbol : symbols) {
         logger.assert_that(next_index < UINT16_MAX, "Symbol limit exceeded. Try providing additional filters.");
 
-        stream << "  " << symbol;
+        stream << "  " << symbol.mangled_name;
+        if (symbol.is_data_symbol) stream << " DATA";
         if (output_ordinals) stream << " @" << next_index << " NONAME";
         stream << "\n";
 

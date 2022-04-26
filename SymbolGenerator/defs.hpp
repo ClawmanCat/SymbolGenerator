@@ -29,3 +29,11 @@ namespace symgen {
     template <typename K, typename Hash = default_hash<K>, typename Eq = default_eq<K>>
     using hash_set = absl::flat_hash_set<K, Hash, Eq>;
 }
+
+
+namespace std {
+    template <typename T> requires requires (const T t) { { t.hash() } -> std::convertible_to<std::size_t>; }
+    struct hash<T> {
+        constexpr std::size_t operator()(const T& value) const { return value.hash(); }
+    };
+}

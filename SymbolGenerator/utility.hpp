@@ -15,6 +15,11 @@ namespace symgen {
     extern std::string demangle_symbol(const std::string& symbol);
 
 
+    template <typename T> inline std::size_t hash_of(const T& v) {
+        return std::hash<T>{}(v);
+    }
+
+
     template <typename... Ts> inline std::string stream_to_string(const Ts&... args) {
         std::stringstream stream;
         (stream << ... << args);

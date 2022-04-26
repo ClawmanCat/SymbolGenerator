@@ -37,7 +37,7 @@ Caching occurs on a per-obj-file basis.
 - `-verbose`:   if provided, logs additional information, like the number of symbols per TU and whether or not cached symbols were used.
 - `-trace`:     if provided, logs even more information, like the reason for each symbol's inclusion or exclusion.
 - `-j`:         if provided, the number of threads used to process objects. Defaults to number of threads of the current device.
-- `-ordinal`:   if provided, symbols are exported by ordinal instead of by name. Use this option to reduce the size of the DLL.
+- `-ordinal`:   if provided, symbols are exported by ordinal instead of by name and marked with `NONAME`.
 
 The `-lib`, `-i` and `-o` parameters are required. All other parameters are optional (Although you should provide at least one to match anything).  
 Note that "namespace" for the purpose of this parser refers to any scope object. E.g. for nested classes, the parent class will show as part of the namespace.
@@ -50,10 +50,12 @@ Provided are the demangled name of the symbol (as per `UnDecorateSymbolName`), a
 The function should return zero to discard the symbol, and non-zero otherwise.  
 If the `-fn` option is combined with other filters, this function is only invoked with symbols that have already passed all other filters.
 
+An `.obj` file may contain symbols that cannot be exported, like managed code and scalar/vector destructors. 
+These are automatically excluded before any other filtering is done.
 
 Example:
 ```shell
-SymbolGenerator.exe -cache -lib VoxelEngine -i ../out/debug/CMakeFiles/VoxelEngine.dir -o ./VoxelEngine.def -y ve -n .*detail.* .*impl.* meta -yo .*vertex_layout.*
+SymbolGenerator.exe --cache -lib VoxelEngine -i ../out/debug/CMakeFiles/VoxelEngine.dir -o ./VoxelEngine.def -y ve -n .*detail.* .*impl.* meta -yo .*vertex_layout.*
 ```
 This command creates `./VoxelEngine.def` which can be used to create `VoxelEngine.dll`, by taking symbols from all `.obj` files in the `VoxelEngine.dir` directory.
 All symbols in the `ve` namespace and nested namespaces therein are included, except nested namespaces containing the text `detail` or `impl` or named `meta`.
@@ -98,5 +100,15 @@ endfunction()
 As with CMake's `WINDOWS_EXPORT_ALL_SYMBOLS` option, global data symbols must still be marked with `__declspec(dllimport)` when importing.  
 The easiest solution right now is to just export a getter method instead, but an option to automatically edit the existing `.obj` files to mark exported data symbols as such is being looked into.  
   
-Since objects in the global namespace have no namespace to match against the provided filters, they are always excluded by default, even if an option like `-y .*` is used. Such symbols must be included manually with `-yo`, or moved into a namespace.  
-Note that the global namespace also contains special symbols like `.text`, `.data` and `.debug` which should never be exported directly, so exporting the entire global namespace is not an option.
+Since objects in the global namespace have no namespace to match against the provided filters, they are always excluded by default, even if an option like `-y .*` is used. Such symbols must be included manually with `-yo`, or moved into a namespace.
+
+Some symbols that should be automatically filtered currently still aren't. 
+Notably, you should make sure to add filters to remove the following (if your library contains such symbols):
+- Dynamic initializers / dynamic atexit destructors
+- RTTI base class descriptors
+
+Furthermore, the following symbol types are known to cause issues in some circumstances:
+- Lambdas used as template parameters
+- Templated member functions
+- Free functions with static (internal) linkage
+- Constructors explicitly inherited (with `using base::base`) from a non-exported base class constructor.
